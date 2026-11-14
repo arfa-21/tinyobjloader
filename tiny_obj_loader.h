@@ -8981,7 +8981,9 @@ static bool LoadObjInternal(attrib_t *attrib, std::vector<shape_t> *shapes,
         }
 
         // Clamp to int range to avoid UB on float-to-int overflow.
-        if (j > static_cast<real_t>(std::numeric_limits<int>::max())) {
+        // INT_MAX is not representable as float and rounds up to 2^31, so
+        // compare against 2^31 itself, which is exact for float and double.
+        if (j >= static_cast<real_t>(2147483648.0)) {
           if (err) {
             (*err) += sr.format_error(filename,
                 "failed to parse `vw' line: joint_id overflow");

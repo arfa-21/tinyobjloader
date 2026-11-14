@@ -3046,6 +3046,23 @@ void test_objreader_api_error() {
   TEST_CHECK(!reader.Error().empty());
 }
 
+// `vw' joint_id of 2^31 must be rejected, not cast to int (UB).
+// (real_t)INT_MAX rounds up to 2^31 for float, so a `>' check let it through.
+void test_vw_joint_id_overflow() {
+  tinyobj::ObjReader reader;
+  bool ret = reader.ParseFromString("v 0 0 0\nvw 0 2147483648 1\n", "");
+  TEST_CHECK(ret == false);
+  TEST_CHECK(reader.Error().find("joint_id overflow") != std::string::npos);
+
+  tinyobj::ObjReader ok_reader;
+  ret = ok_reader.ParseFromString("v 0 0 0\nvw 0 3 0.5\n", "");
+  TEST_CHECK(ret == true);
+  TEST_CHECK(ok_reader.GetAttrib().skin_weights.size() == 1);
+  TEST_CHECK(ok_reader.GetAttrib().skin_weights[0].weightValues.size() == 1);
+  TEST_CHECK(
+      ok_reader.GetAttrib().skin_weights[0].weightValues[0].joint_id == 3);
+}
+
 // SplitString edge cases
 void test_split_string_edge_cases() {
   std::vector<std::string> tokens;
@@ -4304,6 +4321,7 @@ TEST_LIST = {
     {"test_malformed_vertex_error", test_malformed_vertex_error},
     {"test_malformed_mtl_error", test_malformed_mtl_error},
     {"test_parse_error_backward_compat", test_parse_error_backward_compat},
+    {"test_vw_joint_id_overflow", test_vw_joint_id_overflow},
     {"test_split_string_preserves_non_escape_backslash",
      test_split_string_preserves_non_escape_backslash},
     {"test_loadobjopt_from_buffer", test_loadobjopt_from_buffer},
