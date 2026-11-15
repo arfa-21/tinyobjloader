@@ -2506,6 +2506,31 @@ void test_numeric_overflow_preserves_default() {
 #endif
 }
 
+void test_numeric_bare_exponent_at_eof() {
+  // Regression: a number ending in a bare 'e' as the last bytes of the input
+  // must not read past the end of the buffer. The istream overload copies the
+  // input into an exactly sized buffer, so ASan reports any over-read.
+  std::string obj_str = "v 1.0 2.0 3e";
+
+  std::istringstream obj_stream(obj_str);
+  tinyobj::attrib_t attrib;
+  std::vector<tinyobj::shape_t> shapes;
+  std::vector<tinyobj::material_t> materials;
+  std::string warn, err;
+  bool ret = tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err,
+                              &obj_stream, NULL);
+
+#ifndef TINYOBJLOADER_DISABLE_FAST_FLOAT
+  // fast_float stops before the dangling 'e' and accepts "3".
+  TEST_CHECK(true == ret);
+  TEST_CHECK(attrib.vertices.size() == 3);
+#else
+  // Fallback parser rejects an exponent with no digits.
+  TEST_CHECK(false == ret);
+  TEST_CHECK(!err.empty());
+#endif
+}
+
 void test_numeric_empty_and_whitespace() {
   // Regression: empty tokens, whitespace-only lines, and trailing whitespace
   // must not crash the parser.
@@ -4291,6 +4316,7 @@ TEST_LIST = {
     {"test_numeric_nan_inf", test_numeric_nan_inf},
     {"test_numeric_from_stream", test_numeric_from_stream},
     {"test_numeric_overflow_preserves_default", test_numeric_overflow_preserves_default},
+    {"test_numeric_bare_exponent_at_eof", test_numeric_bare_exponent_at_eof},
     {"test_numeric_empty_and_whitespace", test_numeric_empty_and_whitespace},
     {"test_numeric_garbage_input", test_numeric_garbage_input},
     {"test_numeric_extreme_precision", test_numeric_extreme_precision},

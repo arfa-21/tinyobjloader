@@ -6710,7 +6710,7 @@ static bool tryParseDouble(const char *s, const char *s_end, double *result) {
     if (end_not_reached && (*curr == '+' || *curr == '-')) {
       exp_sign = *curr;
       curr++;
-    } else if (IS_DIGIT(*curr)) { /* Pass through. */
+    } else if (end_not_reached && IS_DIGIT(*curr)) { /* Pass through. */
     } else {
       // Empty E is not allowed.
       goto fail;
