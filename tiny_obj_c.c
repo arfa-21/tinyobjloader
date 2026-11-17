@@ -775,7 +775,8 @@ static tobj_caps tobj_resolve_caps(const tobj_load_config *cfg) {
 typedef struct tobj_file_buf {
   const uint8_t *data;
   size_t len;
-  int mode; /* 0 = allocator buffer, 1 = mmap */
+  size_t cap; /* allocated size when mode == 0; 0 = nothing to free */
+  int mode;   /* 0 = allocator buffer, 1 = mmap */
   tobj_allocator alloc;
 } tobj_file_buf;
 
@@ -784,6 +785,7 @@ static tobj_result tobj_file_open(tobj_file_buf *fb, const char *path,
                                   size_t max_len) {
   fb->data = NULL;
   fb->len = 0;
+  fb->cap = 0;
   fb->mode = 0;
   fb->alloc = *a;
 
@@ -841,7 +843,8 @@ static tobj_result tobj_file_open(tobj_file_buf *fb, const char *path,
       fclose(f);
       return TOBJ_ERR_IO;
     }
-    uint8_t *buf = (uint8_t *)tobj_alloc(a, (size_t)sz ? (size_t)sz : 1, 16);
+    size_t cap = (size_t)sz ? (size_t)sz : 1;
+    uint8_t *buf = (uint8_t *)tobj_alloc(a, cap, 16);
     if (!buf) {
       fclose(f);
       return TOBJ_ERR_ALLOC;
@@ -850,6 +853,7 @@ static tobj_result tobj_file_open(tobj_file_buf *fb, const char *path,
     fclose(f);
     fb->data = buf;
     fb->len = rd;
+    fb->cap = cap;
     fb->mode = 0;
     return TOBJ_OK;
   }
@@ -864,7 +868,7 @@ static void tobj_file_close(tobj_file_buf *fb) {
     return;
   }
 #endif
-  if (fb->mode == 0 && fb->len) tobj_free(&fb->alloc, (void *)fb->data, fb->len);
+  if (fb->mode == 0 && fb->cap) tobj_free(&fb->alloc, (void *)fb->data, fb->cap);
   fb->data = NULL;
 }
 

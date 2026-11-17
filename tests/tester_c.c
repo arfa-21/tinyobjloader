@@ -6,6 +6,8 @@
 #include "acutest.h"
 #include "tiny_obj_c.h"
 
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 /* ---- helpers ----------------------------------------------------------- */
@@ -381,6 +383,69 @@ static void test_allocator_without_calloc_or_realloc(void) {
   tobj_scene_free_f(&sc);
 }
 
+/* Allocator that records each block's size and checks it again on free. */
+typedef struct sized_alloc_state {
+  long live;
+  int size_mismatch;
+} sized_alloc_state;
+
+static void *sized_alloc(void *ud, size_t size, size_t align) {
+  (void)align;
+  size_t *p = (size_t *)malloc(size + 16);
+  if (!p) return NULL;
+  p[0] = size;
+  ((sized_alloc_state *)ud)->live++;
+  return (unsigned char *)p + 16;
+}
+
+static void sized_free(void *ud, void *ptr, size_t size) {
+  sized_alloc_state *st = (sized_alloc_state *)ud;
+  size_t *p = (size_t *)((unsigned char *)ptr - 16);
+  if (p[0] != size) st->size_mismatch++;
+  st->live--;
+  free(p);
+}
+
+static int write_file(const char *path, const char *text) {
+  FILE *f = fopen(path, "wb");
+  if (!f) return 0;
+  fputs(text, f);
+  fclose(f);
+  return 1;
+}
+
+static void test_file_buffer_freed_with_alloc_size(void) {
+  /* empty .obj and an empty .mtl pulled in through mtllib */
+  if (!TEST_CHECK(write_file("tobj_empty_tmp.obj", "") &&
+                  write_file("tobj_empty_tmp.mtl", "") &&
+                  write_file("tobj_mtllib_tmp.obj",
+                             "mtllib tobj_empty_tmp.mtl\n"
+                             "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n")))
+    return;
+
+  sized_alloc_state st = {0, 0};
+  tobj_load_config cfg = tobj_default_config();
+  cfg.allocator.alloc = sized_alloc;
+  cfg.allocator.calloc = NULL;
+  cfg.allocator.realloc = NULL;
+  cfg.allocator.free = sized_free;
+  cfg.allocator.user_data = &st;
+
+  tobj_scene_f sc;
+  TEST_CHECK(tobj_load_obj_from_file_f(&sc, "tobj_empty_tmp.obj", &cfg, NULL) ==
+             TOBJ_OK);
+  tobj_scene_free_f(&sc);
+  TEST_CHECK(tobj_load_obj_from_file_f(&sc, "tobj_mtllib_tmp.obj", &cfg,
+                                       NULL) == TOBJ_OK);
+  tobj_scene_free_f(&sc);
+  TEST_CHECK_(st.live == 0, "live allocations: %ld", st.live);
+  TEST_CHECK(st.size_mismatch == 0);
+
+  remove("tobj_empty_tmp.obj");
+  remove("tobj_empty_tmp.mtl");
+  remove("tobj_mtllib_tmp.obj");
+}
+
 TEST_LIST = {
     {"corpus_loads", test_corpus_loads},
     {"both_precisions", test_both_precisions},
@@ -402,4 +467,6 @@ TEST_LIST = {
     {"invalid_allocator_rejected", test_invalid_allocator_rejected},
     {"allocator_without_calloc_or_realloc",
      test_allocator_without_calloc_or_realloc},
+    {"file_buffer_freed_with_alloc_size",
+     test_file_buffer_freed_with_alloc_size},
     {NULL, NULL}};
